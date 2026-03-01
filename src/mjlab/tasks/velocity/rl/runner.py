@@ -15,6 +15,8 @@ class VelocityOnPolicyRunner(MjlabOnPolicyRunner):
 
   def save(self, path: str, infos=None):
     super().save(path, infos)
+    if getattr(self, "_last_save_skipped", False):
+      return
     policy_path = path.split("model")[0]
     filename = os.path.basename(os.path.dirname(policy_path)) + ".onnx"
     try:

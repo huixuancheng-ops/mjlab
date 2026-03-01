@@ -51,12 +51,60 @@ class MjlabOnPolicyRunner(OnPolicyRunner):
       dynamo=False,
     )
 
+  def learn(
+    self, num_learning_iterations: int, init_at_random_ep_len: bool = False
+  ) -> None:
+    """Override to support dense checkpoint saves at specific iterations.
+
+    When ``dense_save_iterations`` is configured, temporarily sets
+    ``save_interval=1`` so ``save()`` is called every iteration, then
+    filters inside ``save()`` to only persist checkpoints at the desired
+    sparse interval plus the extra dense iterations.
+    """
+    dense_iters = frozenset(self.cfg.get("dense_save_iterations", ()))
+    if not dense_iters:
+      super().learn(num_learning_iterations, init_at_random_ep_len)
+      return
+
+    sparse_interval = self.cfg["save_interval"]
+    final_it = self.current_learning_iteration + num_learning_iterations - 1
+    self._dense_save_iters: frozenset[int] = dense_iters
+    self._sparse_save_interval: int | None = sparse_interval
+    self._final_iteration: int | None = final_it
+    self.cfg["save_interval"] = 1
+    try:
+      super().learn(num_learning_iterations, init_at_random_ep_len)
+    finally:
+      self.cfg["save_interval"] = sparse_interval
+      self._dense_save_iters = frozenset()
+      self._sparse_save_interval = None
+      self._final_iteration = None
+
   def save(self, path: str, infos=None) -> None:
     """Save checkpoint.
 
     Extends the base implementation to persist the environment's
     common_step_counter and to respect the ``upload_model`` config flag.
+
+    When ``dense_save_iterations`` is active (set by ``learn()``), saves
+    only at the sparse interval, the dense iterations, or the final
+    iteration.  Sets ``_last_save_skipped`` so subclasses can skip
+    post-save work (e.g. ONNX export) on suppressed saves.
     """
+    it = self.current_learning_iteration
+    dense_iters: frozenset[int] = getattr(self, "_dense_save_iters", frozenset())
+    sparse_interval: int | None = getattr(self, "_sparse_save_interval", None)
+    final_it: int | None = getattr(self, "_final_iteration", None)
+
+    if dense_iters or sparse_interval is not None:
+      is_final = final_it is not None and it == final_it
+      is_sparse = sparse_interval is not None and it % sparse_interval == 0
+      is_dense = it in dense_iters
+      if not (is_final or is_sparse or is_dense):
+        self._last_save_skipped = True
+        return
+
+    self._last_save_skipped = False
     env_state = {"common_step_counter": self.env.unwrapped.common_step_counter}
     infos = {**(infos or {}), "env_state": env_state}
     # Inline base OnPolicyRunner.save() to conditionally gate W&B upload.

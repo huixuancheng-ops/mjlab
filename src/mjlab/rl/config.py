@@ -114,6 +114,10 @@ class RslRlBaseRunnerCfg:
   upload_model: bool = True
   """Whether to upload model files (.pt, .onnx) to W&B on save. Set to
   False to keep metric logging but avoid storage usage. Default is True."""
+  dense_save_iterations: Tuple[int, ...] = ()
+  """Extra iterations at which to save checkpoints in addition to save_interval.
+  Useful for dense saving near the end of training, e.g. (4500, 4600, 4700).
+  """
 
 
 @dataclass
