@@ -11,9 +11,10 @@ def unitree_g1_tracking_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
   """Create RL runner configuration for Unitree G1 tracking task."""
   return RslRlOnPolicyRunnerCfg(
     actor=RslRlModelCfg(
-      hidden_dims=(512, 256, 128),
+      # hidden_dims=(512, 256, 128),
+      hidden_dims=(128, 128),
       activation="elu",
-      obs_normalization=True,
+      obs_normalization=False,
       stochastic=True,
       init_noise_std=1.0,
     ),
