@@ -15,19 +15,21 @@ echo "[sweep] Using GPU $EMPTY_GPU"
 # Headless EGL rendering for video recording.
 export MUJOCO_GL=egl
 export MUJOCO_EGL_DEVICE_ID=$EMPTY_GPU
-
-for SEED in $(seq 500 999); do
+# --agent.dense-save-iterations "(3000,3100,3200,3300,3400,3499)" \
+for SEED in $(seq 543 749); do
   echo "========================================"
   echo "[sweep] seed=$SEED  $(date)"
   echo "========================================"
   uv run train Mjlab-Velocity-Flat-Unitree-G1 \
     --env.scene.num-envs 4096 \
-    --agent.max-iterations 3500 \
+    --agent.max-iterations 4500 \
     --agent.save-interval 1000 \
-    --agent.dense-save-iterations "(3000,3100,3200,3300,3400,3499)" \
+    --agent.dense-save-iterations "(4000,4100,4200,4300,4400,4499)" \
     --agent.actor.hidden-dims "(128,128)" \
+    --agent.actor.obs-normalization False \
+    --agent.critic.obs-normalization False \
     --agent.seed "$SEED" \
-    --agent.experiment-name "g1_flat_velocity_sweep" \
+    --agent.experiment-name "g1_flat_velocity_sweep_no_norm" \
     --agent.run-name "seed_${SEED}" \
     --agent.logger wandb \
     --video True \

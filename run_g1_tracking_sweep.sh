@@ -60,31 +60,70 @@ esac
 export MUJOCO_GL=egl
 export MUJOCO_EGL_DEVICE_ID=$GPU
 
+# wandb: tolerate slow networks so a single flaky init doesn't kill the sweep.
+export WANDB_INIT_TIMEOUT=300
+export WANDB_HTTP_TIMEOUT=60
+export WANDB__SERVICE_WAIT=300
+export WANDB_RESUME=allow
+
+MAX_RETRIES=3
+FAILED_SEEDS=()
+
 echo "[sweep] Using GPU $GPU"
 
-for SEED in $(seq 100 199); do
+for SEED in $(seq 106 149); do
   echo "========================================"
   echo "[sweep] seed=$SEED  $(date)"
   echo "========================================"
-  uv run train "$TASK" \
-    --env.scene.num-envs "$NUM_ENVS" \
-    --agent.max-iterations "$MAX_ITERATIONS" \
-    --agent.save-interval "$SAVE_INTERVAL" \
-    --agent.dense-save-iterations "(3200,3300,3400,3500,3600,3700,3800,3899)" \
-    --agent.actor.hidden-dims "(128,128)" \
-    --agent.actor.obs-normalization False \
-    --agent.critic.obs-normalization False \
-    --agent.seed "$SEED" \
-    --agent.experiment-name "$EXPERIMENT_NAME" \
-    --agent.run-name "seed_${SEED}" \
-    --agent.logger "$LOGGER" \
-    --agent.wandb-project "$WANDB_PROJECT_NAME" \
-    --env.commands.motion.sampling-mode uniform \
-    --video "$VIDEO" \
-    --video-interval "$VIDEO_INTERVAL" \
-    --video-length "$VIDEO_LENGTH" \
-    --gpu-ids "[$GPU]" \
-    $MOTION_FLAG
+
+  attempt=1
+  while (( attempt <= MAX_RETRIES )); do
+    echo "[sweep] seed=$SEED attempt=$attempt/$MAX_RETRIES"
+    # Disable -e locally so a failed run doesn't terminate the whole sweep.
+    set +e
+    uv run train "$TASK" \
+      --env.scene.num-envs "$NUM_ENVS" \
+      --agent.max-iterations "$MAX_ITERATIONS" \
+      --agent.save-interval "$SAVE_INTERVAL" \
+      --agent.dense-save-iterations "(3200,3300,3400,3500,3600,3700,3800,3899)" \
+      --agent.actor.hidden-dims "(128,128)" \
+      --agent.actor.obs-normalization False \
+      --agent.critic.obs-normalization False \
+      --agent.seed "$SEED" \
+      --agent.experiment-name "$EXPERIMENT_NAME" \
+      --agent.run-name "seed_${SEED}" \
+      --agent.logger "$LOGGER" \
+      --agent.wandb-project "$WANDB_PROJECT_NAME" \
+      --env.commands.motion.sampling-mode uniform \
+      --video "$VIDEO" \
+      --video-interval "$VIDEO_INTERVAL" \
+      --video-length "$VIDEO_LENGTH" \
+      --gpu-ids "[$GPU]" \
+      $MOTION_FLAG
+    status=$?
+    set -e
+
+    if (( status == 0 )); then
+      echo "[sweep] seed=$SEED OK"
+      break
+    fi
+
+    echo "[sweep] seed=$SEED failed (exit=$status) on attempt $attempt"
+    if (( attempt == MAX_RETRIES )); then
+      echo "[sweep] seed=$SEED giving up after $MAX_RETRIES attempts"
+      FAILED_SEEDS+=("$SEED")
+      break
+    fi
+    # Backoff before retry (10s, 30s, 90s, ...).
+    backoff=$(( 10 * (3 ** (attempt - 1)) ))
+    echo "[sweep] retrying seed=$SEED in ${backoff}s..."
+    sleep "$backoff"
+    attempt=$(( attempt + 1 ))
+  done
 done
 
+if (( ${#FAILED_SEEDS[@]} > 0 )); then
+  echo "[sweep] Completed with failures. Failed seeds: ${FAILED_SEEDS[*]}"
+  exit 1
+fi
 echo "[sweep] All seeds done."

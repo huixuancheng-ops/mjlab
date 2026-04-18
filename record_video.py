@@ -23,7 +23,10 @@ def main():
   parser.add_argument("--output-dir", type=str, default="videos")
   parser.add_argument("--device", type=str, default="cuda:0")
   parser.add_argument(
-    "--actor-hidden-dims", type=int, nargs="+", default=None,
+    "--actor-hidden-dims",
+    type=int,
+    nargs="+",
+    default=None,
     help="Override actor hidden dims, e.g. --actor-hidden-dims 256 128",
   )
   args = parser.parse_args()
@@ -36,9 +39,7 @@ def main():
   if args.actor_hidden_dims is not None:
     agent_cfg.actor.hidden_dims = tuple(args.actor_hidden_dims)
 
-  env = ManagerBasedRlEnv(
-    cfg=env_cfg, device=args.device, render_mode="rgb_array"
-  )
+  env = ManagerBasedRlEnv(cfg=env_cfg, device=args.device, render_mode="rgb_array")
 
   output_dir = Path(args.output_dir)
   env = VideoRecorder(
@@ -51,9 +52,7 @@ def main():
 
   env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
 
-  runner = MjlabOnPolicyRunner(
-    env, asdict(agent_cfg), device=args.device
-  )
+  runner = MjlabOnPolicyRunner(env, asdict(agent_cfg), device=args.device)
   runner.load(
     args.checkpoint_file,
     load_cfg={"actor": True},
