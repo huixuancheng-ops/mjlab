@@ -32,10 +32,14 @@ from mjlab.utils.torch import configure_torch_backends
 class EvaluateConfig:
   """Configuration for policy evaluation."""
 
-  wandb_run_path: str
-  """W&B run path in format 'entity/project/run_id'."""
+  wandb_run_path: str | None = None
+  """W&B run path 'entity/project/run_id'. Mutually exclusive with checkpoint_file."""
   wandb_checkpoint_name: str | None = None
   """Optional checkpoint name within the W&B run to load (e.g. 'model_4000.pt')."""
+  checkpoint_file: str | None = None
+  """Local checkpoint .pt path. Requires --motion-file. Mutually exclusive with W&B."""
+  motion_file: str | None = None
+  """Local motion .npz path. Required when --checkpoint-file is used."""
   num_envs: int = 1024
   """Number of parallel environments (= number of episodes to evaluate)."""
   device: str | None = None
@@ -57,13 +61,28 @@ def run_evaluate(task_id: str, cfg: EvaluateConfig) -> dict[str, float]:
   if not isinstance(motion_cmd, MotionCommandCfg):
     raise ValueError(f"Task {task_id} is not a tracking task.")
 
-  # Load motion file from W&B run.
-  api = wandb.Api()
-  run = api.run(cfg.wandb_run_path)
-  art = next((a for a in run.used_artifacts() if a.type == "motions"), None)
-  if art is None:
-    raise RuntimeError("No motion artifact found in the run.")
-  motion_cmd.motion_file = str(Path(art.download()) / "motion.npz")
+  local_ckpt: Path | None = None
+  if cfg.checkpoint_file is not None:
+    if cfg.wandb_run_path is not None:
+      raise ValueError("Pass either --wandb-run-path or --checkpoint-file, not both.")
+    if cfg.motion_file is None:
+      raise ValueError("--checkpoint-file requires --motion-file.")
+    local_ckpt = Path(cfg.checkpoint_file)
+    motion_path = Path(cfg.motion_file)
+    if not local_ckpt.is_file():
+      raise FileNotFoundError(f"Checkpoint not found: {local_ckpt}")
+    if not motion_path.is_file():
+      raise FileNotFoundError(f"Motion file not found: {motion_path}")
+    motion_cmd.motion_file = str(motion_path)
+  else:
+    if cfg.wandb_run_path is None:
+      raise ValueError("Pass either --wandb-run-path or --checkpoint-file.")
+    api = wandb.Api()
+    run = api.run(cfg.wandb_run_path)
+    art = next((a for a in run.used_artifacts() if a.type == "motions"), None)
+    if art is None:
+      raise RuntimeError("No motion artifact found in the run.")
+    motion_cmd.motion_file = str(Path(art.download()) / "motion.npz")
 
   # Evaluation config.
   motion_cmd.sampling_mode = "start"
@@ -74,15 +93,21 @@ def run_evaluate(task_id: str, cfg: EvaluateConfig) -> dict[str, float]:
   env = ManagerBasedRlEnv(cfg=env_cfg, device=device)
   env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
 
-  log_root_path = (Path("logs") / "rsl_rl" / agent_cfg.experiment_name).resolve()
-  resume_path, _ = get_wandb_checkpoint_path(
-    log_root_path, Path(cfg.wandb_run_path), cfg.wandb_checkpoint_name
-  )
+  if local_ckpt is not None:
+    resume_path = local_ckpt.resolve()
+  else:
+    assert cfg.wandb_run_path is not None
+    log_root_path = (Path("logs") / "rsl_rl" / agent_cfg.experiment_name).resolve()
+    resume_path, _ = get_wandb_checkpoint_path(
+      log_root_path, Path(cfg.wandb_run_path), cfg.wandb_checkpoint_name
+    )
   print(f"[INFO] Loading checkpoint: {resume_path}")
 
   runner_cls = load_runner_cls(task_id) or MjlabOnPolicyRunner
   runner = runner_cls(env, asdict(agent_cfg), device=device)
-  runner.load(str(resume_path), map_location=device)
+  runner.load(
+    str(resume_path), load_cfg={"actor": True}, strict=True, map_location=device
+  )
   policy = runner.get_inference_policy(device=device)
 
   command = cast(MotionCommand, env.unwrapped.command_manager.get_term("motion"))

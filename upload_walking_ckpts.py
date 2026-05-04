@@ -1,4 +1,4 @@
-"""Upload selected g1_tracking_dance1s2_sweep checkpoints to HuggingFace.
+"""Upload selected g1_flat_velocity_sweep_no_norm checkpoints to HuggingFace.
 
 Renames files from {seed_dir}/model_{iter}.pt to seed_{seed}_model_{iter}.pt
 and uploads only the iterations listed in REQUIRED_ITERS.
@@ -14,8 +14,8 @@ from pathlib import Path
 from huggingface_hub import CommitOperationAdd, HfApi, create_repo
 from huggingface_hub.errors import HfHubHTTPError
 
-SOURCE = Path("logs/rsl_rl/g1_tracking_dance1s2_sweep")
-REQUIRED_ITERS = (3200, 3300, 3400, 3500, 3600, 3700, 3800, 3899)
+SOURCE = Path("logs/rsl_rl/g1_flat_velocity_sweep_no_norm")
+REQUIRED_ITERS = (4000, 4100, 4200, 4300, 4400, 4499)
 SEED_DIR_RE = re.compile(
   r"^(?P<ts>\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})_seed_(?P<seed>\d+)$"
 )
@@ -43,7 +43,7 @@ def main():
   parser.add_argument("--repo-id", required=True, help="e.g. username/diff_weight")
   parser.add_argument(
     "--subfolder",
-    default="g1-dance1s2-ckpts",
+    default="walking",
     help="Subfolder inside the repo for these checkpoints",
   )
   parser.add_argument(
@@ -88,7 +88,7 @@ def main():
 
   # Skip files already on HF for resumable uploads.
   existing = set(api.list_repo_files(args.repo_id, repo_type="dataset"))
-  print(f"  {len(existing)} files already on HF, skipping those.")
+  print(f"  {len(existing)} files already on HF, skipping those that match.")
 
   operations: list[CommitOperationAdd] = []
   for seed in sorted(complete):
