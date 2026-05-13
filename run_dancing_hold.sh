@@ -10,7 +10,7 @@ export PATH="$HOME/.local/bin:$PATH"
 cd "$(dirname "$0")"
 
 # ── GPU ──────────────────────────────────────────────
-GPU=0
+GPU=3
 
 # ── Task ─────────────────────────────────────────────
 TASK="Mjlab-Tracking-Flat-Unitree-G1-No-State-Estimation"
@@ -71,7 +71,7 @@ FAILED_SEEDS=()
 
 echo "[sweep] Using GPU $GPU"
 
-for SEED in $(seq 0 99); do
+for SEED in $(seq 600 699); do
   echo "========================================"
   echo "[sweep] seed=$SEED  $(date)"
   echo "========================================"
