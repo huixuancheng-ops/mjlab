@@ -134,8 +134,9 @@ def run_evaluate(task_id: str, cfg: EvaluateConfig) -> dict[str, float]:
 
   done_envs = torch.zeros(cfg.num_envs, dtype=torch.bool, device=device)
   success = torch.zeros(cfg.num_envs, dtype=torch.bool, device=device)
-  # Frames completed before reset, per env. Snapshotted from command.time_steps
-  # BEFORE env.step (which resets newly-done envs in place).
+  # Policy steps survived per env before reset. NOT command.time_steps —
+  # that's the (looped) motion phase, which wraps when motion < episode and
+  # gives bogus partial progress on otherwise-successful envs.
   progress_frames = torch.zeros(cfg.num_envs, device=device)
 
   obs = env.get_observations()
@@ -145,7 +146,7 @@ def run_evaluate(task_id: str, cfg: EvaluateConfig) -> dict[str, float]:
 
   step = 0
   while not done_envs.all():
-    time_steps_pre = command.time_steps.clone()
+    ep_len_pre = env.unwrapped.episode_length_buf.clone()
     with torch.no_grad():
       actions = policy(obs)
     obs, _, dones, _ = env.step(actions)
@@ -171,7 +172,7 @@ def run_evaluate(task_id: str, cfg: EvaluateConfig) -> dict[str, float]:
     newly_done = dones.bool() & ~done_envs
 
     if newly_done.any():
-      completed = (time_steps_pre + 1).clamp(max=progress_ceiling).float()
+      completed = (ep_len_pre + 1).clamp(max=progress_ceiling).float()
       progress_frames = torch.where(newly_done, completed, progress_frames)
       success = success | (newly_done & truncated & ~terminated)
       done_envs = done_envs | newly_done
