@@ -23,7 +23,7 @@ cd "$(dirname "$0")"
 TASK="Mjlab-Tracking-Flat-Unitree-G1-No-State-Estimation"
 NUM_ENVS=512
 OUTPUT_DIR=""  # default: <sample-dir>/eval
-GPU=4
+GPU=2
 PATTERN="sample_*.pt"
 MAX_SAMPLES=100  # 0 = no limit
 SAMPLE_DIR="/home/huixuan_cheng/diff_weight/sample/outputs/g1dance1s2/NL8_EMBED1024_PATCH16_PREDsample_BS256_LR2E04_EMAon_LNzscore_final"
