@@ -112,7 +112,9 @@ def run_evaluate(task_id: str, cfg: EvaluateConfig) -> dict[str, float]:
 
   command = cast(MotionCommand, env.unwrapped.command_manager.get_term("motion"))
   ee_body_names = env_cfg.terminations["ee_body_pos"].params["body_names"]
+  motion_total = int(command.motion.time_step_total)
   print(f"[INFO] End effector bodies: {ee_body_names}")
+  print(f"[INFO] Motion length: {motion_total} frames")
 
   # Metric accumulators.
   all_mpkpe: list[torch.Tensor] = []
@@ -123,6 +125,9 @@ def run_evaluate(task_id: str, cfg: EvaluateConfig) -> dict[str, float]:
 
   done_envs = torch.zeros(cfg.num_envs, dtype=torch.bool, device=device)
   success = torch.zeros(cfg.num_envs, dtype=torch.bool, device=device)
+  # Frames completed before reset, per env. Snapshotted from command.time_steps
+  # BEFORE env.step (which resets newly-done envs in place).
+  progress_frames = torch.zeros(cfg.num_envs, device=device)
 
   obs = env.get_observations()
   env.unwrapped.command_manager.compute(dt=env.unwrapped.step_dt)
@@ -131,6 +136,7 @@ def run_evaluate(task_id: str, cfg: EvaluateConfig) -> dict[str, float]:
 
   step = 0
   while not done_envs.all():
+    time_steps_pre = command.time_steps.clone()
     with torch.no_grad():
       actions = policy(obs)
     obs, _, dones, _ = env.step(actions)
@@ -156,6 +162,8 @@ def run_evaluate(task_id: str, cfg: EvaluateConfig) -> dict[str, float]:
     newly_done = dones.bool() & ~done_envs
 
     if newly_done.any():
+      completed = (time_steps_pre + 1).clamp(max=motion_total).float()
+      progress_frames = torch.where(newly_done, completed, progress_frames)
       success = success | (newly_done & truncated & ~terminated)
       done_envs = done_envs | newly_done
       print(
@@ -177,6 +185,11 @@ def run_evaluate(task_id: str, cfg: EvaluateConfig) -> dict[str, float]:
   active_steps = (stacks[0] != 0).sum(dim=0).float().clamp(min=1)
   means = [s.sum(dim=0) / active_steps for s in stacks]
 
+  # Per-env fraction of motion completed before reset, in [0, 1].
+  progress_frac = progress_frames / float(motion_total)
+  q = torch.tensor([0.1, 0.25, 0.5, 0.75, 0.9, 0.95], device=device)
+  p_values = torch.quantile(progress_frac, q)
+
   metrics = {
     "success_rate": success.float().mean().item(),
     "mpkpe": means[0].mean().item(),
@@ -184,6 +197,16 @@ def run_evaluate(task_id: str, cfg: EvaluateConfig) -> dict[str, float]:
     "joint_vel_error": means[2].mean().item(),
     "ee_pos_error": means[3].mean().item(),
     "ee_ori_error": means[4].mean().item(),
+    "progress_mean": progress_frac.mean().item(),
+    "progress_std": progress_frac.std().item(),
+    "progress_min": progress_frac.min().item(),
+    "progress_max": progress_frac.max().item(),
+    "progress_p10": p_values[0].item(),
+    "progress_p25": p_values[1].item(),
+    "progress_p50": p_values[2].item(),
+    "progress_p75": p_values[3].item(),
+    "progress_p90": p_values[4].item(),
+    "progress_p95": p_values[5].item(),
   }
 
   print("\n" + "=" * 50)
