@@ -113,8 +113,17 @@ def run_evaluate(task_id: str, cfg: EvaluateConfig) -> dict[str, float]:
   command = cast(MotionCommand, env.unwrapped.command_manager.get_term("motion"))
   ee_body_names = env_cfg.terminations["ee_body_pos"].params["body_names"]
   motion_total = int(command.motion.time_step_total)
+  # Envs can survive at most min(motion_total, episode_time_out_steps). Normalize
+  # progress by THAT ceiling so success (env survived its time-out) maps to
+  # progress=1.0, regardless of whether the motion is longer than the episode.
+  max_env_steps = int(env.unwrapped.max_episode_length)
+  progress_ceiling = min(motion_total, max_env_steps)
   print(f"[INFO] End effector bodies: {ee_body_names}")
-  print(f"[INFO] Motion length: {motion_total} frames")
+  print(
+    f"[INFO] Motion length: {motion_total} frames; "
+    f"episode max steps: {max_env_steps}; "
+    f"progress ceiling: {progress_ceiling}"
+  )
 
   # Metric accumulators.
   all_mpkpe: list[torch.Tensor] = []
@@ -162,7 +171,7 @@ def run_evaluate(task_id: str, cfg: EvaluateConfig) -> dict[str, float]:
     newly_done = dones.bool() & ~done_envs
 
     if newly_done.any():
-      completed = (time_steps_pre + 1).clamp(max=motion_total).float()
+      completed = (time_steps_pre + 1).clamp(max=progress_ceiling).float()
       progress_frames = torch.where(newly_done, completed, progress_frames)
       success = success | (newly_done & truncated & ~terminated)
       done_envs = done_envs | newly_done
@@ -185,8 +194,11 @@ def run_evaluate(task_id: str, cfg: EvaluateConfig) -> dict[str, float]:
   active_steps = (stacks[0] != 0).sum(dim=0).float().clamp(min=1)
   means = [s.sum(dim=0) / active_steps for s in stacks]
 
-  # Per-env fraction of motion completed before reset, in [0, 1].
-  progress_frac = progress_frames / float(motion_total)
+  # Per-env fraction of episode-reachable motion completed before reset, in [0, 1].
+  # Divisor = min(motion_total, max_env_steps): an env that survives its episode
+  # without falling reaches progress = 1.0 even if the motion is longer than the
+  # episode length.
+  progress_frac = progress_frames / float(progress_ceiling)
   q = torch.tensor([0.1, 0.25, 0.5, 0.75, 0.9, 0.95], device=device)
   p_values = torch.quantile(progress_frac, q)
 
@@ -197,6 +209,9 @@ def run_evaluate(task_id: str, cfg: EvaluateConfig) -> dict[str, float]:
     "joint_vel_error": means[2].mean().item(),
     "ee_pos_error": means[3].mean().item(),
     "ee_ori_error": means[4].mean().item(),
+    "motion_total_frames": motion_total,
+    "max_env_steps": max_env_steps,
+    "progress_ceiling": progress_ceiling,
     "progress_mean": progress_frac.mean().item(),
     "progress_std": progress_frac.std().item(),
     "progress_min": progress_frac.min().item(),
