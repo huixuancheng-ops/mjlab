@@ -1,4 +1,4 @@
-"""Upload dance-hold checkpoints from g1_tracking_dance1s2_hold_sweep to HF.
+"""Upload walking checkpoints from g1_flat_velocity_sweep_no_norm_new to HF.
 
 For each seed directory `{ts}_seed_{N}`, only seeds that contain ALL of
 REQUIRED_ITERS are uploaded. Files are renamed to `seed_{N}_model_{it}.pt`
@@ -8,7 +8,7 @@ Uploads stream directly from disk via CommitOperationAdd (no local staging).
 Usage:
   uv run python upload_dance1s2_hold_ckpts.py \
     --repo-id huixuanc/diff_weight \
-    --subfolder dance_hold
+    --subfolder walking_new
 """
 
 import argparse
@@ -21,8 +21,10 @@ from pathlib import Path
 from huggingface_hub import CommitOperationAdd, HfApi, create_repo
 from huggingface_hub.errors import HfHubHTTPError
 
-SOURCE = Path("logs/rsl_rl/g1_tracking_dance1s2_hold_sweep")
-REQUIRED_ITERS = (3800, 3900, 4000, 4100, 4200, 4300, 4400, 4499)
+SOURCE = Path(
+  "/home/huixuan_cheng/mjlab/logs/rsl_rl/g1_flat_velocity_sweep_no_norm_new"
+)
+REQUIRED_ITERS = (4300, 4400, 4500, 4600, 4700, 4800, 4900, 4999)
 SEED_RE = re.compile(r"_seed_(?P<seed>\d+)$")
 
 
@@ -73,7 +75,7 @@ def commit_with_retry(api, repo_id, batch, idx, message):
 def main():
   parser = argparse.ArgumentParser()
   parser.add_argument("--repo-id", default="huixuanc/diff_weight")
-  parser.add_argument("--subfolder", default="dance_hold")
+  parser.add_argument("--subfolder", default="walking_new")
   parser.add_argument("--private", action="store_true")
   parser.add_argument("--dry-run", action="store_true")
   parser.add_argument("--batch-size", type=int, default=50)
@@ -139,7 +141,7 @@ def main():
       args.repo_id,
       batch,
       idx,
-      f"Upload dance_hold ckpts batch {idx}/{n_batches}",
+      f"Upload walking_new ckpts batch {idx}/{n_batches}",
     )
     done += len(batch)
     print(f"  [{done}/{total}] committed batch {idx}/{n_batches}")
