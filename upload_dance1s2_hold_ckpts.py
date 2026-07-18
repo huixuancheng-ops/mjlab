@@ -22,7 +22,7 @@ from huggingface_hub import CommitOperationAdd, HfApi, create_repo
 from huggingface_hub.errors import HfHubHTTPError
 
 SOURCE = Path(
-  "/home/huixuan_cheng/mjlab/logs/rsl_rl/g1_flat_velocity_sweep_no_norm_new"
+  "./logs/rsl_rl/g1_flat_velocity_sweep_no_norm_new"
 )
 REQUIRED_ITERS = (4300, 4400, 4500, 4600, 4700, 4800, 4900, 4999)
 SEED_RE = re.compile(r"_seed_(?P<seed>\d+)$")
